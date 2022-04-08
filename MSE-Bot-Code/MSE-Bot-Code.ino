@@ -132,38 +132,53 @@ Adafruit_NeoPixel SmartLEDs(2, 25, NEO_GRB + NEO_KHZ800);
 
 //-------------------- Added Variables --------------------
 
-#include <ESP32Servo.h>
+//#include <ESP32Servo.h>
+#include <ESP32_Servo.h>
 #include <Stepper.h>
 
 // 1 - forward, 2 - left, 3 - right, 4 - reverse
 
 int state = 5;
+bool isClimb = false;
 
 //Limit Switches
-const int limitSwitchFront = 26;
-const int limitSwitchSideA = 16;
+const int limitSwitchFront = 14;
+const int limitSwitchSideA = 26;
 const int limitSwitchSideB = 13;
 
 bool limitSwitchFrontState = false;
 bool limitSwitchSideAState = false;
 bool limitSwitchSideBState = false;
 
+unsigned long currentSwitchTime, preSwitchTime = 0, intervalSwitchTime = 0;
+int switchCase = 0;
 
 //Servos
 int servoInterval = 5;
 
-int rightServoPin = 12;
+int rightServoPin = 18; //Was 12
 int leftServoPin = 19;
+
+int rightPos = 180;
+int leftPos = 0;
+
+bool rightLimit = false, leftLimit = false;
 
 Servo rightServo;
 Servo leftServo;
 
 //Steppers
-//const int stepsPerRevolution = 2048;
-//const int rolePerMinute = 17;
 
-//Stepper rightStepper(stepsPerRevolution, pin, pin, pin, pin);
-//Stepper leftStepper(stepsPerRevolution, pin, pin, pin, pin);
+#define D 25
+#define C 17 
+#define B 22 
+#define A 21 
+
+#define NUMBER_OF_STEPS_PER_REV 31
+
+int stepState = 0;
+int stepTimeNow;
+int stepTimePrev=0;
 
 void setup() {
    Serial.begin(115200); 
@@ -197,22 +212,18 @@ void setup() {
   pinMode(limitSwitchSideA, INPUT_PULLUP);
   pinMode(limitSwitchSideB, INPUT_PULLUP);
 
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
-
-  rightServo.setPeriodHertz(50);
-  leftServo.setPeriodHertz(50);
-
   rightServo.attach(rightServoPin, 500, 2400);
   leftServo.attach(leftServoPin, 500, 2400);
 
-  rightServo.write(180);
-  leftServo.write(0);
+  rightLimit = false;
+  leftLimit = false;
+  isClimb = false;
 
-//  rightStepper.setSpeed(rolePerMinute);
-//  leftStepper.setSpeed(rolePerMinute);
+  pinMode(A,OUTPUT);
+  pinMode(B,OUTPUT);
+  pinMode(C,OUTPUT);
+  pinMode(D,OUTPUT);
+  
   //-------------------- Our Code --------------------//
 
    SmartLEDs.begin();                          // Initialize Smart LEDs object (required)
@@ -221,10 +232,10 @@ void setup() {
 }
 
 void loop(){
-  //WSVR_BreakPoint(1);
+   //WSVR_BreakPoint(1);
 
    //average the encoder tick times
-//   ENC_Averaging();
+   //ENC_Averaging();
 
   int iButtonValue = digitalRead(ciPB1);       // read value of push button 1
   if (iButtonValue != iLastButtonState) {      // if value has changed
@@ -309,7 +320,6 @@ void loop(){
     {
       
       if(btRun){
-
 //        Serial.print("Front Switch");
 //        Serial.println(limitSwitchFrontState);
 
@@ -319,52 +329,80 @@ void loop(){
 //        Serial.print("Side B Switch");
 //        Serial.println(limitSwitchSideBState);
 
-//       //-------------------- Our Code --------------------//
-//       if (!limitSwitchFrontState && !limitSwitchSideAState && !limitSwitchSideBState){
-//        state = 1;
-//        Serial.println("State 1");
-//       }
-//       
-//       if (!limitSwitchFrontState && limitSwitchSideAState && !limitSwitchSideBState){
-//        state = 2;
-//        Serial.println("State 2");
-//       }
-//
-//       if (!limitSwitchFrontState && limitSwitchSideAState && limitSwitchSideBState){
-//        state = 3;
-//        Serial.println("State 3");
-//       }
-//
-//       if (!limitSwitchFrontState && !limitSwitchSideAState && limitSwitchSideBState){
-//        state = 4;
-//        Serial.println("State 4");
-//       }
-//
-//       if (limitSwitchFrontState && limitSwitchSideAState && limitSwitchSideBState){
-//        state = 5;
-//        Serial.println("State 5");
-//       }
+       //-------------------- Our Code --------------------//
+       if (!limitSwitchFrontState && !limitSwitchSideAState && !limitSwitchSideBState && !isClimb){
+        state = 1;
+        Serial.println("State 1");
+       }
+       
+       if (!limitSwitchFrontState && limitSwitchSideAState && !limitSwitchSideBState && !isClimb){
+        state = 2;
+//        rightServo.write(180);
+//        leftServo.write(0);
+        Serial.println("State 2");
+        switchCase = 0;
+        preSwitchTime = 0;
+       }
+
+       if (!limitSwitchFrontState && limitSwitchSideAState && limitSwitchSideBState && !isClimb){
+        state = 3;
+        Serial.println("State 3");
+        switchCase = 0;
+        preSwitchTime = 0;
+       }
+
+       if (!limitSwitchFrontState && !limitSwitchSideAState && limitSwitchSideBState && !isClimb){
+        state = 4;
+        Serial.println("State 4");
+        switchCase = 0;
+        preSwitchTime = 0;
+       }
+
+       if (limitSwitchFrontState || isClimb){
+        state = 5;
+        Serial.println("State 5");
+        switchCase = 0;
+        preSwitchTime = 0;
+        isClimb = true;
+       }
        
        if (state == 1){
-        MoveTo(1, 250, 230);
+        currentSwitchTime = millis();
+        if (currentSwitchTime - preSwitchTime >= intervalSwitchTime){
+          preSwitchTime = currentSwitchTime;
+          switch(switchCase){
+            case 0:{
+              intervalSwitchTime = 1750;
+              MoveTo(1, 230, 250);
+              switchCase = 1;
+              break;
+            }
+            case 1:{
+              intervalSwitchTime = 800;
+              MoveTo(2, 200, 200);
+              switchCase = 2;
+              break;
+            }
+            case 2:{
+              intervalSwitchTime = 1200;
+              MoveTo(1, 230, 250);
+              switchCase = 0;
+              break;
+            }
+          }
+        }
        }else if (state == 2){
-        MoveTo(1, 250, 210);
+        MoveTo(3, 200, 200);
        }else if (state == 3){
-        MoveTo(1, 250, 230);
+        MoveTo(1, 250, 250);
        }else if (state == 4){
-        MoveTo(1, 0, 180);
+        MoveTo(2, 200, 200);
        }else if (state == 5){
         move(0);
-//        rightStepper.step(stepsPerRevolution);
-//        rightStepper.step(stepsPerRevolution);
         CR1_ulMotorTimerNow = millis();
-        if ((CR1_ulMotorTimerNow - CR1_ulMotorTimerPrevious >= CR1_uiMotorRunTime) && (rightServo.read() > 90) && (leftServo.read() < 90)){
-          CR1_ulMotorTimerPrevious = CR1_ulMotorTimerNow;
-          CR1_uiMotorRunTime = 500;
-          
-          leftServo.write(leftServo.read() + servoInterval);
-          rightServo.write(rightServo.read() - servoInterval); 
-        }
+        stepTimeNow = millis();
+        runSteppers();
+        runServos();
        }
        //-------------------- Our Code --------------------//
        
@@ -596,5 +634,58 @@ void loop(){
     digitalWrite(ciHeartbeatLED, btHeartbeat);
    // Serial.println((vui32test2 - vui32test1)* 3 );
  }
+}
 
+void runServos(){
+  if (!rightLimit && !leftLimit){
+    for (rightPos = 180, leftPos = 0; rightPos >= 80, leftPos <= 100; rightPos -= 1, leftPos += 1){
+      rightServo.write(rightPos);
+      if (rightPos <= 80) rightLimit = true;
+            
+      leftServo.write(leftPos);
+      if (leftPos >= 100) leftLimit = true;
+            
+      CR1_uiMotorRunTime = 10;
+      CR1_ulMotorTimerPrevious = millis();
+      while (millis() - CR1_ulMotorTimerPrevious < CR1_uiMotorRunTime);
+    }
+  }
+}
+
+void runSteppers(){
+  if(stepTimeNow - stepTimePrev >= 1){
+    stepTimePrev = stepTimeNow;
+    if(stepState == 0){
+      write(1, 0, 0, 0);
+      stepState = 1;
+    }else if (stepState == 1){
+      write(1, 1, 0, 0);
+      stepState = 2;
+    }else if (stepState == 2){
+      write(0, 1, 0, 0);
+      stepState=3;
+    }else if (stepState == 3){
+      write(0, 1, 1, 0);
+      stepState=4;
+    }else if (stepState == 4){
+      write(0, 0, 1, 0);
+      stepState=5;
+    }else if (stepState == 5){
+      write(0, 0, 1, 1);
+      stepState = 6;
+    }else if (stepState == 6){
+      write(0, 0, 0, 1);
+      stepState = 7;
+    }else if (stepState == 7){
+      write(1, 0, 0, 1);
+      stepState = 0;
+    }
+  }
+}
+
+void write(int a,int b,int c,int d){
+  digitalWrite(A, a);
+  digitalWrite(B, b);
+  digitalWrite(C, c);
+  digitalWrite(D, d);
 }
