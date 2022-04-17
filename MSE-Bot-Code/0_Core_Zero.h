@@ -1,10 +1,6 @@
 /*
-Western Engineering base code
 2020 06 17
-  
 \Core 0 code
-
-
 */
 
 //Commented out #include(Encoder.h) & ENC_Init() cause not using encoders

@@ -1,10 +1,8 @@
 /*
- Western Engineering base code
 2020 05 13 E J Porter
 
- Dual Motor driver controller implement
-  
- */
+Dual Motor driver controller implement
+*/
 
  #ifndef MOTION_H
  #define MOTION_H 1

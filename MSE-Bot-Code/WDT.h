@@ -1,13 +1,11 @@
 /*
- Western Engineering base code
 2020 05 13 E J Porter
 
- WatchDog implement
-  
- */
+WatchDog implement
+*/
 
- #ifndef WDT_H
-  #define WDT_H 1
+#ifndef WDT_H
+#define WDT_H 1
 
 //---------------------------------------------------------------------------
 //WatchDog

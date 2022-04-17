@@ -1,10 +1,7 @@
 /*
-//Western Engineering base code 
 March 21,2020
-  
+
 \WEB server code
-
-
 */
 
 #ifndef MYWEBSERVER_H
